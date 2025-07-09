@@ -1,4 +1,3 @@
-```markdown
 # Fintech Microservices Loan Processing System
 
 A production-ready microservices architecture for scalable loan processing in financial technology, implementing classical design patterns (Factory, Observer, Repository, and Saga) as described in the research paper "Microservices Architecture in Fintech: A Case Study on Scalable Loan Processing with Classical Design Patterns".
