@@ -1,0 +1,35 @@
+# infrastructure/kubernetes/base/saga-orchestrator/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saga-orchestrator
+  namespace: fintech-loan-processing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: saga-orchestrator
+  template:
+    metadata:
+      labels:
+        app: saga-orchestrator
+        version: v1
+    spec:
+      containers:
+      - name: saga-orchestrator
+        image: fintech/saga-orchestrator:latest
+        ports:
+        - containerPort: 3006
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: saga-db-url
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
