@@ -1,0 +1,47 @@
+# infrastructure/kubernetes/overlays/production/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fintech-loan-processing
+
+bases:
+  - ../../base
+
+patchesStrategicMerge:
+  - deployment-patches.yaml
+
+configMapGenerator:
+  - name: app-config
+    envs:
+      - config.env
+
+secretGenerator:
+  - name: database-credentials
+    envs:
+      - secrets.env
+
+images:
+  - name: fintech/api-gateway
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/api-gateway
+    newTag: latest
+  - name: fintech/loan-application
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/loan-application
+    newTag: latest
+  - name: fintech/kyc-service
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/kyc-service
+    newTag: latest
+  - name: fintech/credit-scoring
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/credit-scoring
+    newTag: latest
+  - name: fintech/decision-service
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/decision-service
+    newTag: latest
+  - name: fintech/contract-service
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/contract-service
+    newTag: latest
+  - name: fintech/saga-orchestrator
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/saga-orchestrator
+    newTag: latest
+  - name: fintech/notification-service
+    newName: 123456789.dkr.ecr.us-east-1.amazonaws.com/fintech/notification-service
+    newTag: latest
