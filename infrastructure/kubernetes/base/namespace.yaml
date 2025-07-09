@@ -1,0 +1,7 @@
+# infrastructure/kubernetes/base/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fintech-loan-processing
+  labels:
+    istio-injection: enabled
