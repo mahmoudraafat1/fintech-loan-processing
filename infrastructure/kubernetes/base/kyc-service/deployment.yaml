@@ -1,0 +1,47 @@
+# infrastructure/kubernetes/base/kyc-service/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-service
+  namespace: fintech-loan-processing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kyc-service
+  template:
+    metadata:
+      labels:
+        app: kyc-service
+        version: v1
+    spec:
+      containers:
+      - name: kyc-service
+        image: fintech/kyc-service:latest
+        ports:
+        - containerPort: 3002
+        env:
+        - name: POSTGRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: kyc-postgres-url
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: kyc-mongo-url
+        - name: S3_BUCKET
+          value: "fintech-kyc-documents"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: url
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
