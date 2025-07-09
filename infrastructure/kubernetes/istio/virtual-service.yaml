@@ -1,0 +1,23 @@
+# infrastructure/kubernetes/istio/virtual-service.yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-gateway-vs
+  namespace: fintech-loan-processing
+spec:
+  hosts:
+  - api-gateway
+  http:
+  - match:
+    - headers:
+        x-version:
+          exact: v2
+    route:
+    - destination:
+        host: api-gateway
+        subset: v2
+  - route:
+    - destination:
+        host: api-gateway
+        subset: v1
+      weight: 100
