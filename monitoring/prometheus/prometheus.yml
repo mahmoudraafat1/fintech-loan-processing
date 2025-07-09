@@ -1,0 +1,50 @@
+# monitoring/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: '/metrics'
+
+  - job_name: 'loan-application'
+    static_configs:
+      - targets: ['loan-application:3001']
+    metrics_path: '/metrics'
+
+  - job_name: 'kyc-service'
+    static_configs:
+      - targets: ['kyc-service:3002']
+    metrics_path: '/metrics'
+
+  - job_name: 'credit-scoring'
+    static_configs:
+      - targets: ['credit-scoring:3003']
+    metrics_path: '/actuator/prometheus'
+
+  - job_name: 'saga-orchestrator'
+    static_configs:
+      - targets: ['saga-orchestrator:3006']
+    metrics_path: '/metrics'
+
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - fintech-loan-processing
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
