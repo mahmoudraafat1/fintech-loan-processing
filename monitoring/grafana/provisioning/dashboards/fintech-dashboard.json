@@ -1,0 +1,56 @@
+# monitoring/grafana/provisioning/dashboards/fintech-dashboard.json
+{
+  "dashboard": {
+    "title": "Fintech Loan Processing Dashboard",
+    "panels": [
+      {
+        "title": "API Gateway Request Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"api-gateway\"}[5m])"
+          }
+        ]
+      },
+      {
+        "title": "95th Percentile Latency",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))"
+          }
+        ]
+      },
+      {
+        "title": "Service Throughput (RPS)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[1m])) by (service)"
+          }
+        ]
+      },
+      {
+        "title": "Saga Success Rate",
+        "targets": [
+          {
+            "expr": "rate(saga_completed_total[5m]) / (rate(saga_completed_total[5m]) + rate(saga_failed_total[5m]))"
+          }
+        ]
+      },
+      {
+        "title": "Credit Scoring Parallel Processing",
+        "targets": [
+          {
+            "expr": "avg(credit_scoring_concurrent_requests)"
+          }
+        ]
+      },
+      {
+        "title": "KYC Cache Hit Rate",
+        "targets": [
+          {
+            "expr": "rate(kyc_cache_hits_total[5m]) / (rate(kyc_cache_hits_total[5m]) + rate(kyc_cache_misses_total[5m]))"
+          }
+        ]
+      }
+    ]
+  }
+}
