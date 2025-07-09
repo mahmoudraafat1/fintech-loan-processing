@@ -1,0 +1,180 @@
+# .github/workflows/build-and-deploy.yml
+name: Build and Deploy Microservices
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER_NAME: fintech-loan-processing-cluster
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+    
+    - name: Detect changed services
+      id: detect
+      run: |
+        CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+        SERVICES=()
+        
+        for service in api-gateway loan-application kyc-service credit-scoring decision-service contract-service saga-orchestrator notification-service; do
+          if echo "$CHANGED_FILES" | grep -q "services/$service/"; then
+            SERVICES+=("$service")
+          fi
+        done
+        
+        echo "services=$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -cs .)" >> $GITHUB_OUTPUT
+
+  build-and-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      if: matrix.service != 'credit-scoring'
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+    
+    - name: Set up JDK
+      if: matrix.service == 'credit-scoring'
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Install dependencies (Node.js)
+      if: matrix.service != 'credit-scoring'
+      working-directory: services/${{ matrix.service }}
+      run: npm ci
+    
+    - name: Run tests (Node.js)
+      if: matrix.service != 'credit-scoring'
+      working-directory: services/${{ matrix.service }}
+      run: npm test
+    
+    - name: Run tests (Spring Boot)
+      if: matrix.service == 'credit-scoring'
+      working-directory: services/${{ matrix.service }}
+      run: ./mvnw test
+    
+    - name: SonarQube Scan
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        if [ "${{ matrix.service }}" != "credit-scoring" ]; then
+          cd services/${{ matrix.service }}
+          npx sonarqube-scanner
+        else
+          cd services/${{ matrix.service }}
+          ./mvnw sonar:sonar
+        fi
+
+  build-and-push:
+    needs: [detect-changes, build-and-test]
+    if: github.ref == 'refs/heads/main' && needs.detect-changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+    
+    - name: Build and push Docker image
+      env:
+        ECR_REPOSITORY: fintech/${{ matrix.service }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        cd services/${{ matrix.service }}
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+  deploy:
+    needs: [detect-changes, build-and-push]
+    if: github.ref == 'refs/heads/main' && needs.detect-changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+    
+    - name: Install ArgoCD CLI
+      run: |
+        curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        chmod +x /usr/local/bin/argocd
+    
+    - name: Update service image
+      env:
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Update Kustomization with new image tag
+        cd infrastructure/kubernetes/overlays/production
+        kustomize edit set image fintech/${{ matrix.service }}=${{ env.ECR_REGISTRY }}/fintech/${{ matrix.service }}:$IMAGE_TAG
+        
+        # Commit changes
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add .
+        git commit -m "Update ${{ matrix.service }} to $IMAGE_TAG"
+        git push
+    
+    - name: Sync ArgoCD Application
+      env:
+        ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+      run: |
+        argocd app sync ${{ matrix.service }} --server $ARGOCD_SERVER --auth-token $ARGOCD_AUTH_TOKEN
+
+  performance-test:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run K6 Performance Tests
+      run: |
+        docker run -i loadimpact/k6 run - <tests/performance/load-test.js
