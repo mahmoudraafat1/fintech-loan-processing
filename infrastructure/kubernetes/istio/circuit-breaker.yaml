@@ -1,0 +1,15 @@
+# infrastructure/kubernetes/istio/circuit-breaker.yaml
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: credit-scoring-cb
+  namespace: fintech-loan-processing
+spec:
+  host: credit-scoring
+  trafficPolicy:
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
